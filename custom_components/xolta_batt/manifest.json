@@ -1,0 +1,11 @@
+{
+  "codeowners": ["AThomsen"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/AThomsen/home-assistant_xolta_battery",
+  "domain": "xolta_batt",
+  "iot_class": "cloud_polling",
+  "name": "Xolta Solar Battery",
+  "requirements": [],
+  "version": "1.0.0"
+}
