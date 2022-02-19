@@ -46,7 +46,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
             # async with async_timeout.timeout(10):
-            result = await hass.async_add_executor_job(xoltaApi.getData, siteId)
+            result = await xoltaApi.getData()
             _LOGGER.debug("Resulting result: %s", result)
 
             sites = result
@@ -182,18 +182,19 @@ class XoltaBatterySensor(CoordinatorEntity, SensorEntity):
         return data["state"]
 
     # For backwards compatibility
-    # @property
-    # def extra_state_attributes(self):
-    #     """Return the state attributes of the monitored installation."""
-    #     data = self.coordinator.data[self.sn]
-    #     # _LOGGER.debug("state, self data: %s", data.items())
-    #     attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-    #     attributes["statusText"] = self.statusText(data["status"])
-    #     return attributes
-
     @property
-    def is_on(self) -> bool:
-        self.coordinator.data["site_data"]["state"] == "Running"
+    def extra_state_attributes(self):
+        """Return the state attributes of the monitored installation."""
+        data = self.coordinator.data["site_data"]
+        # _LOGGER.debug("state, self data: %s", data.items())
+        # attributes = {k: v for k, v in data.items() if k is not None and v is not None}
+        attributes = {}
+        attributes["statusText"] = data["state"]
+        return attributes
+
+    # @property
+    # def is_on(self) -> bool:
+    #     self.coordinator.data["site_data"]["state"] == "Running"
 
     @property
     def should_poll(self) -> bool:

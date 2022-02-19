@@ -4,6 +4,7 @@ import asyncio
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import aiohttp_client
 
 # from homeassistant.const import (
 #    CONF_PASSWORD,
@@ -29,7 +30,11 @@ async def async_setup(hass: HomeAssistant, config: dict):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up sems from a config entry."""
     hass.data[DOMAIN][entry.entry_id] = XoltaApi(
-        hass, entry.data[CONF_REFRESH_TOKEN], entry.data[CONF_SITE_ID]
+        hass,
+        aiohttp_client.async_create_clientsession(hass),
+        entry.data[CONF_SITE_ID],
+        entry.data[CONF_REFRESH_TOKEN],
+        entry,
     )
 
     for platform in PLATFORMS:

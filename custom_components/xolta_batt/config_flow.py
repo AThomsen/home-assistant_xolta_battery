@@ -6,15 +6,11 @@ from typing import Any
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import aiohttp_client
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, XOLTA_CONFIG_SCHEMA, CONF_SITE_ID, CONF_REFRESH_TOKEN
 from .xolta_api import XoltaApi
-
-# from homeassistant.const import (
-#     CONF_PASSWORD,
-#     CONF_USERNAME,
-# )
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,11 +24,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     _LOGGER.debug("Xolta - Start validation config flow user input")
     api = XoltaApi(
         hass,
-        data[CONF_REFRESH_TOKEN],
+        aiohttp_client.async_create_clientsession(hass),
         data[CONF_SITE_ID],
+        data[CONF_REFRESH_TOKEN],
+        None,
     )
 
-    authenticated = await hass.async_add_executor_job(api.test_authentication)
+    authenticated = await api.test_authentication()
     if not authenticated:
         raise InvalidAuth
 
