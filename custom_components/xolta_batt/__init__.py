@@ -29,13 +29,17 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up sems from a config entry."""
-    hass.data[DOMAIN][entry.entry_id] = XoltaApi(
+    api = XoltaApi(
         hass,
         aiohttp_client.async_create_clientsession(hass),
         entry.data[CONF_SITE_ID],
         entry.data[CONF_REFRESH_TOKEN],
         entry,
     )
+
+    await api.renewTokens()
+
+    hass.data[DOMAIN][entry.entry_id] = api
 
     for platform in PLATFORMS:
         hass.async_create_task(

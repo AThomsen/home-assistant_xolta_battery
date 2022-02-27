@@ -40,7 +40,7 @@ class XoltaApi:
             return self._access_token is not None
         except Exception as exception:
             _LOGGER.exception("API Authentication exception " + exception)
-            return False
+            raise
 
     async def renewTokens(self):
         """Get an access token for the Xolta API from a refresh token"""
@@ -57,6 +57,11 @@ class XoltaApi:
                 _TokenURL, data=login_data, timeout=_RequestTimeout
             ) as login_response:
                 _LOGGER.debug("Login Response: %s", login_response)
+
+                if login_response.status == 400:
+                    txt = await login_response.text()
+                    if "AADB2C90080" in txt:
+                        raise exceptions.ConfigEntryAuthFailed
 
                 login_response.raise_for_status()
 
@@ -80,6 +85,7 @@ class XoltaApi:
 
         except Exception as exception:
             _LOGGER.error("Unable to fetch login token from Xolta API. %s", exception)
+            raise
 
     async def getData(self, renewToken=False, maxTokenRetries=2):
         """Get the latest data from the Xolta API and updates the state."""
@@ -130,6 +136,7 @@ class XoltaApi:
 
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from Xolta api. %s", exception)
+            raise
 
 
 class OutOfRetries(exceptions.HomeAssistantError):

@@ -1,5 +1,8 @@
 import site
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.components.binary_sensor import DEVICE_CLASS_BATTERY_CHARGING
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 import homeassistant
 import logging
 
@@ -92,6 +95,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             # _LOGGER.debug("Resulting data: %s", data)
             return data
         # except ApiError as err:
+        except ConfigEntryAuthFailed as err:
+            raise
+
         except Exception as err:
             # logging.exception("Something awful happened!")
             raise UpdateFailed(f"Error communicating with API: {err}")
@@ -119,63 +125,87 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
     async_add_entities(
-        [XoltaBatterySensor(coordinator, siteId), XoltaGridSensor(coordinator, siteId)]
-        # for idx, ent in enumerate(coordinator.data)
+        [
+            XoltaSensor(
+                coordinator,
+                siteId,
+                "Battery flow",
+                SensorDeviceClass.POWER,
+                POWER_KILO_WATT,
+                # negative means charging, positive means discharging
+                "inverterActivePowerAggAvg",
+            ),
+            XoltaSensor(
+                coordinator,
+                siteId,
+                "PV",
+                SensorDeviceClass.POWER,
+                POWER_KILO_WATT,
+                "meterPvActivePowerAggAvg",
+            ),
+            XoltaSensor(
+                coordinator,
+                siteId,
+                "Consumption",
+                SensorDeviceClass.POWER,
+                POWER_KILO_WATT,
+                "consumption",
+            ),
+            XoltaSensor(
+                coordinator,
+                siteId,
+                "Battery charge level",
+                SensorDeviceClass.BATTERY,
+                PERCENTAGE,
+                "bmsSocRawArrayCloudTrimmedAggAvg",
+            ),
+            XoltaSensor(
+                coordinator,
+                siteId,
+                "Grid",
+                SensorDeviceClass.POWER,
+                POWER_KILO_WATT,
+                # negative means sell, positive means buy
+                "meterGridActivePowerAggAvg",
+            ),
+        ]
     )
-    # async_add_entities(
-    #     SemsStatisticsSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data)
-    # )
-    # async_add_entities(
-    #     SemsPowerflowSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
-    # )
-    # async_add_entities(
-    #     SemsTotalImportSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
-    # )
-    # async_add_entities(
-    #     SemsTotalExportSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
-    # )
 
 
-class XoltaBatterySensor(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator, site_id):
-        """Pass coordinator to CoordinatorEntity."""
+class XoltaSensor(CoordinatorEntity, SensorEntity):
+    def __init__(
+        self, coordinator, site_id, sensor_type, device_class, units, data_property
+    ):
         super().__init__(coordinator)
         self.coordinator = coordinator
-        self.site_id = site_id
-        # self.sn = sn
-        _LOGGER.debug("Creating XoltaBatterySensor with id %s", self.site_id)
+        self._site_id = site_id
+        self._sensor_type = sensor_type
+        self._device_class = device_class
+        self._units = units
+        self._data_property = data_property
+        _LOGGER.debug("Creating XoltaBatterySensor with id %s", self._site_id)
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_BATTERY
+        return self._device_class
 
     @property
     def unit_of_measurement(self):
-        return PERCENTAGE
+        return self._units
 
     @property
     def name(self) -> str:
-        """Return the name of the sensor."""
-        # return f"Battery {self.coordinator.data['site_data']['name']}"
-        return f"Battery {self.site_id}"
+        return self._sensor_type
+        # return f"Battery {self.site_id}"
 
     @property
     def unique_id(self) -> str:
-        return f"{self.site_id}-battery"
+        return f"{self._site_id}-{self._sensor_type}"
 
     @property
     def state(self):
-        """Return the state of the device."""
         data = self.coordinator.data["site_data"]
-        return (
-            data["bmsSocRawArrayCloudTrimmedAggAvg"]
-            if data["state"] == "Running"
-            else 0
-        )
+        return data[self._data_property] if data["state"] == "Running" else 0
 
     def statusText(self, status) -> str:
         data = self.coordinator.data["site_data"]
@@ -208,105 +238,14 @@ class XoltaBatterySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
-        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
         return {
             "identifiers": {
                 # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.site_id)
+                (DOMAIN, self._site_id)
             },
-            "name": self.name,
+            "name": f"Battery {self._site_id}",
             "manufacturer": "Xolta",
-            # "model": self.extra_state_attributes.get("model_type", "unknown"),
-            # "sw_version": self.extra_state_attributes.get("firmwareversion", "unknown"),
-            # "via_device": (DOMAIN, self.api.bridgeid),
-        }
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-    async def async_update(self):
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        await self.coordinator.async_request_refresh()
-
-
-class XoltaGridSensor(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator, site_id):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.site_id = site_id
-        # self.sn = sn
-        _LOGGER.debug("Creating XoltaGridSensor with id %s", self.site_id)
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_POWER
-
-    @property
-    def unit_of_measurement(self):
-        return POWER_KILO_WATT
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        # return f"Battery {self.coordinator.data['site_data']['name']}"
-        return f"Grid {self.site_id}"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self.site_id}-grid"
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data["site_data"]
-        return data["meterGridActivePowerAggAvg"] if data["state"] == "Running" else 0
-
-    def statusText(self, status) -> str:
-        data = self.coordinator.data["site_data"]
-        return data["state"]
-
-    # For backwards compatibility
-    # @property
-    # def extra_state_attributes(self):
-    #     """Return the state attributes of the monitored installation."""
-    #     data = self.coordinator.data[self.sn]
-    #     # _LOGGER.debug("state, self data: %s", data.items())
-    #     attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-    #     attributes["statusText"] = self.statusText(data["status"])
-    #     return attributes
-
-    @property
-    def is_on(self) -> bool:
-        self.coordinator.data["site_data"]["state"] == "Running"
-
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
-    def available(self):
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
-
-    @property
-    def device_info(self):
-        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
-        return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.site_id)
-            },
-            "name": self.name,
-            "manufacturer": "Xolta",
-            # "model": self.extra_state_attributes.get("model_type", "unknown"),
+            "model": "Battery",
             # "sw_version": self.extra_state_attributes.get("firmwareversion", "unknown"),
             # "via_device": (DOMAIN, self.api.bridgeid),
         }
