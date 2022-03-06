@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigFlow, CONN_CLASS_CLOUD_POLL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import aiohttp_client
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 
 from .const import DOMAIN, XOLTA_CONFIG_SCHEMA, CONF_SITE_ID, CONF_REFRESH_TOKEN
 from .xolta_api import XoltaApi
@@ -61,8 +61,10 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
             if authenticated:
                 return None
             errors["base"] = "invalid_auth"
+        except ConfigEntryAuthFailed as ex:
+            errors[CONF_REFRESH_TOKEN] = str(ex.args)
         except Exception as ex:
-            errors["base"] = ex
+            errors[CONF_REFRESH_TOKEN] = str(ex.args)
         return errors
 
     async def async_step_user(self, user_input=None):
@@ -83,9 +85,11 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, user_input):
         """Handle configuration by re-auth."""
-        if user_input.get(CONF_SITE_ID):
-            self._site_id = user_input[CONF_SITE_ID]
-        self._pat = user_input[CONF_REFRESH_TOKEN]
+
+        if user_input is not None:
+            if user_input.get(CONF_SITE_ID):
+                self._site_id = user_input[CONF_SITE_ID]
+            self._refresh_token = user_input[CONF_REFRESH_TOKEN]
 
         self.context["title_placeholders"] = {"site_id": f"{self._site_id}"}
 

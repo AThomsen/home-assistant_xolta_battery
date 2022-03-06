@@ -1,3 +1,5 @@
+from datetime import timedelta, timezone, datetime as dt
+import ciso8601
 import json
 import logging
 import aiohttp
@@ -5,6 +7,7 @@ from sqlalchemy import true
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant import exceptions
+from homeassistant.helpers.config_validation import datetime
 from .const import CONF_SITE_ID, CONF_REFRESH_TOKEN
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,13 +28,15 @@ class XoltaApi:
         refresh_token,
         config_entry: ConfigEntry,
     ):
-        """Init dummy hub for config testing"""
         self._hass = hass
         self._webclient = webclient
         self._config_entry = config_entry
         self._site_id = site_id
         self._refresh_token = refresh_token
         self._access_token = None
+        # self._telemetry_data = None
+        self._telemetry_data_ts = None
+        self._data = {}
 
     async def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -61,7 +66,9 @@ class XoltaApi:
                 if login_response.status == 400:
                     txt = await login_response.text()
                     if "AADB2C90080" in txt:
-                        raise exceptions.ConfigEntryAuthFailed
+                        raise exceptions.ConfigEntryAuthFailed(
+                            "Could not authenticate against Xolta. Refresh token expired."
+                        )
 
                 login_response.raise_for_status()
 
@@ -105,7 +112,6 @@ class XoltaApi:
                     )
                     await self.renewTokens()
 
-                # Prepare Power Station status Headers
                 headers = {
                     "Accept": "application/json",
                     "Cache-Control": "no-cache",
@@ -131,8 +137,89 @@ class XoltaApi:
 
                     response.raise_for_status()
 
-                    jsonResponse = await response.json()
-                    return jsonResponse["data"]
+                    json_response = await response.json()
+                    self._data["sensors"] = json_response["data"][0]
+
+                now = dt.now(timezone.utc)
+
+                if (
+                    self._telemetry_data_ts is None
+                    or ((now - self._telemetry_data_ts).total_seconds() / 60) >= 10
+                ):
+                    resolution_min = 10
+                    resolution_hour = resolution_min / 60
+
+                    # TODO: hvordan ser dette ud hvis den kaldes lige efter midnat?
+                    params = {
+                        "siteId": self._site_id,
+                        "CalculateConsumptionNeeded": "true",
+                        "fromDateTime": f"{now.date().isoformat()}Z",
+                        "toDateTime": f"{now.isoformat()[:-3]}Z",
+                        "resolutionMin": resolution_min,
+                    }
+                    async with await self._webclient.get(
+                        _ApiBaseURL + "GetDataSummary",
+                        headers=headers,
+                        params=params,
+                        timeout=_RequestTimeout,
+                    ) as response:
+
+                        # try again and renew token is unsuccessful
+                        if response.status == 401:
+                            _LOGGER.debug(
+                                "Unauthorized call to Xolta API. Renewing token (trying %s time(s))",
+                                maxTokenRetries,
+                            )
+                            maxTokenRetries -= 1
+                            renewToken = true
+                            continue
+
+                        response.raise_for_status()
+
+                        json_response = await response.json()
+                        telemetry_data = json_response["telemetry"]
+
+                        energy_data = {
+                            "pv": sum(
+                                t["meterPvActivePowerAggAvgSiteSingle"]
+                                for t in telemetry_data
+                            )
+                            * resolution_hour,
+                            "consumption": sum(
+                                t["calculatedConsumption"] for t in telemetry_data
+                            )
+                            * resolution_hour,
+                            "battery_charged": sum(
+                                min(0, t["inverterActivePowerAggAvgSiteSum"])
+                                for t in telemetry_data
+                            )
+                            * -resolution_hour,
+                            "battery_discharged": sum(
+                                max(0, t["inverterActivePowerAggAvgSiteSum"])
+                                for t in telemetry_data
+                            )
+                            * resolution_hour,
+                            "grid_exported": sum(
+                                min(0, t["meterGridActivePowerAggAvgSiteSingle"])
+                                for t in telemetry_data
+                            )
+                            * -resolution_hour,
+                            "grid_imported": sum(
+                                max(0, t["meterGridActivePowerAggAvgSiteSingle"])
+                                for t in telemetry_data
+                            )
+                            * resolution_hour,
+                            "last_reset": now.date(),
+                            "dt": telemetry_data
+                            and ciso8601.parse_datetime(
+                                telemetry_data[-1]["utcEndTime"]
+                            )
+                            or None,
+                        }
+                        self._telemetry_data_ts = energy_data["dt"] or now
+                        self._data["energy"] = energy_data
+
+                return self._data
 
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from Xolta api. %s", exception)

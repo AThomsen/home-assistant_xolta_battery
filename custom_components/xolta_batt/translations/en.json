@@ -8,14 +8,22 @@
             "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error"
         },
+        "flow_title": "{site_url}",
         "step": {
+            "reauth": {
+                "data": {
+                    "refresh_token": "Refresh token"
+                },
+                "description": "Authentication failed for {site_id}. Please enter an active refresh token.",
+                "title": "Reauthentication"
+            },
             "user": {
                 "data": {
                     "site_id": "Site ID",
                     "refresh_token": "Refresh token"
-                }
+                },
+                "title": "Xolta Battery API"
             }
         }
-    },
-    "title": "Xolta PV API"
+    }
 }
