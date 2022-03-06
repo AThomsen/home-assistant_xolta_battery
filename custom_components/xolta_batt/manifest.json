@@ -7,5 +7,5 @@
   "iot_class": "cloud_polling",
   "name": "Xolta Solar Battery",
   "requirements": [],
-  "version": "alpha-1"
+  "version": "0.1.0"
 }
