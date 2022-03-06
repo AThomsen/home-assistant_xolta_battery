@@ -34,7 +34,6 @@ class XoltaApi:
         self._site_id = site_id
         self._refresh_token = refresh_token
         self._access_token = None
-        # self._telemetry_data = None
         self._telemetry_data_ts = None
         self._data = {}
 

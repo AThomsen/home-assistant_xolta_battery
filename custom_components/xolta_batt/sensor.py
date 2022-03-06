@@ -50,49 +50,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             result = await xoltaApi.getData()
             return result
 
-            sites = result
-
-            # TODO: make sure it's the real site
-            data = {"site_data": sites[0]}
-            # if inverters is None:
-            #     # something went wrong, probably token could not be fetched
-            #     raise UpdateFailed(
-            #         "Error communicating with API, probably token could not be fetched, see debug logs"
-            #     )
-            # for inverter in inverters:
-            #     name = inverter["invert_full"]["name"]
-            #     sn = inverter["invert_full"]["sn"]
-            #     _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-            #     data[sn] = inverter["invert_full"]
-
-            # hasPowerflow = result["hasPowerflow"]
-            # hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
-
-            # if hasPowerflow:
-            #     if hasEnergeStatisticsCharts:
-            #         StatisticsCharts = {
-            #             f"Charts_{key}": val
-            #             for key, val in result["energeStatisticsCharts"].items()
-            #         }
-            #         StatisticsTotals = {
-            #             f"Totals_{key}": val
-            #             for key, val in result["energeStatisticsTotals"].items()
-            #         }
-            #         powerflow = {
-            #             **result["powerflow"],
-            #             **StatisticsCharts,
-            #             **StatisticsTotals,
-            #         }
-            #     else:
-            #         powerflow = result["powerflow"]
-
-            #     powerflow["sn"] = result["homKit"]["sn"]
-            #     # _LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
-            #     data["homeKit"] = powerflow
-
-            # _LOGGER.debug("Resulting data: %s", data)
-            return data
-        # except ApiError as err:
         except ConfigEntryAuthFailed as err:
             raise
 
@@ -126,7 +83,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             XoltaSensor(
                 coordinator,
                 siteId,
-                "Battery flow",
+                "Battery power flow",
                 SensorDeviceClass.POWER,
                 POWER_KILO_WATT,
                 # negative means charging, positive means discharging
@@ -135,7 +92,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             XoltaSensor(
                 coordinator,
                 siteId,
-                "PV",
+                "PV power",
                 SensorDeviceClass.POWER,
                 POWER_KILO_WATT,
                 "meterPvActivePowerAggAvg",
@@ -143,7 +100,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             XoltaSensor(
                 coordinator,
                 siteId,
-                "Consumption",
+                "Power consumption",
                 SensorDeviceClass.POWER,
                 POWER_KILO_WATT,
                 "consumption",
@@ -159,7 +116,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             XoltaSensor(
                 coordinator,
                 siteId,
-                "Grid flow",
+                "Grid power flow",
                 SensorDeviceClass.POWER,
                 POWER_KILO_WATT,
                 # negative means sell, positive means buy
@@ -169,37 +126,37 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             XoltaEnergySensor(
                 coordinator,
                 siteId,
-                "Grid imported",
+                "Grid energy imported",
                 "grid_imported",
             ),
             XoltaEnergySensor(
                 coordinator,
                 siteId,
-                "Grid exported",
+                "Grid energy exported",
                 "grid_exported",
             ),
             XoltaEnergySensor(
                 coordinator,
                 siteId,
-                "Battery charged",
+                "Battery energy charged",
                 "battery_charged",
             ),
             XoltaEnergySensor(
                 coordinator,
                 siteId,
-                "Battery discharged",
+                "Battery energy discharged",
                 "battery_discharged",
             ),
             XoltaEnergySensor(
                 coordinator,
                 siteId,
-                "PV",
+                "PV energy",
                 "pv",
             ),
             XoltaEnergySensor(
                 coordinator,
                 siteId,
-                "Consumption",
+                "Energy consumption",
                 "consumption",
             ),
         ]
