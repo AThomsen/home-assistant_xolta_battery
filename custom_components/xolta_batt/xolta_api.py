@@ -1,16 +1,23 @@
+import asyncio
 from datetime import timedelta, timezone, datetime as dt
 import ciso8601
 import json
 import logging
 import aiohttp
-from sqlalchemy import true
-
+import uuid
 from homeassistant.config_entries import ConfigEntry
 from homeassistant import exceptions
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.config_validation import datetime
-from .const import CONF_SITE_ID, CONF_REFRESH_TOKEN
+from .const import CONF_SITE_ID
 
 _LOGGER = logging.getLogger(__name__)
+
+STORAGE_KEY = "xolta_batt_auth"
+STORAGE_VERSION = 1
+# STORAGE_EXPIRE_TIME = "expire_time"
+STORAGE_ACCESS_TOKEN = "access_token"
+STORAGE_REFRESH_TOKEN = "refresh_token"
 
 _TokenURL = "https://xolta.b2clogin.com/145c2c43-a8da-46ab-b5da-1d4de444ed82/b2c_1_sisu/oauth2/v2.0/token"
 _ApiBaseURL = "https://xoltarmcluster2.northeurope.cloudapp.azure.com:19081/Xolta.Rm.Base.App/Xolta.Rm.Base.Api/api/"
@@ -22,38 +29,75 @@ class XoltaApi:
 
     def __init__(
         self,
-        hass,
+        hass: HomeAssistant,
         webclient: aiohttp.ClientSession,
         site_id,
-        refresh_token,
-        config_entry: ConfigEntry,
+        username,
+        password,
     ):
         self._hass = hass
         self._webclient = webclient
-        self._config_entry = config_entry
         self._site_id = site_id
-        self._refresh_token = refresh_token
-        self._access_token = None
+
+        self._username = username
+        self._password = password
+
+        self._prefs = None
+        self._store = hass.helpers.storage.Store(STORAGE_VERSION, STORAGE_KEY)
+
+        self._auth_event = asyncio.Event()
+        self._auth_corr_id = None
+        hass.bus.async_listen("XOLTA_BATT_AUTH_RESPONSE", self.auth_appdaemon_cb)
+
         self._telemetry_data_ts = None
         self._data = {}
 
     async def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
         try:
+            if self._prefs is None:
+                await self.async_load_preferences()
             await self.renewTokens()
-            return self._access_token is not None
+            return True
         except Exception as exception:
             _LOGGER.exception("API Authentication exception " + exception)
             raise
 
+    async def auth_appdaemon_cb(self, event):
+        if event.data.get("corr_id") == self._auth_corr_id:
+            self._prefs[STORAGE_ACCESS_TOKEN] = event.data.get("access_token")
+            self._prefs[STORAGE_REFRESH_TOKEN] = event.data.get("refresh_token")
+            await self._store.async_save(self._prefs)
+            self._auth_event.set()
+
+    async def wait_for_auth(self):
+        # todo - check for re-entrant...
+        self._auth_corr_id = str(uuid.uuid4())
+        data = {
+            "username": self._username,
+            "password": self._password,
+            "corr_id": self._auth_corr_id,
+        }
+        self._hass.bus.async_fire("XOLTA_BATT_AUTH_REQUEST", data)
+        await self._auth_event.wait()
+
+    async def login(self):
+        # wait for up to 5 min to be sure everything is started up...
+        await asyncio.wait_for(self.wait_for_auth(), 10 * 60)
+        self._auth_event.clear()
+
     async def renewTokens(self):
         """Get an access token for the Xolta API from a refresh token"""
         try:
-            _LOGGER.debug("Xolta - Getting API access token")
+            if self._prefs[STORAGE_REFRESH_TOKEN] is None:
+                await self.login()
+                return
+
+            _LOGGER.debug("Xolta - Getting API access token from refresh token")
 
             login_data = {
                 "grant_type": "refresh_token",
-                "refresh_token": self._refresh_token,
+                "refresh_token": self._prefs[STORAGE_REFRESH_TOKEN],
             }
 
             # Make POST request to retrieve Authentication Token from Xolta API
@@ -65,9 +109,18 @@ class XoltaApi:
                 if login_response.status == 400:
                     txt = await login_response.text()
                     if "AADB2C90080" in txt:
-                        raise exceptions.ConfigEntryAuthFailed(
-                            "Could not authenticate against Xolta. Refresh token expired."
+                        _LOGGER.info(
+                            "Could not authenticate against Xolta. Refresh token expired. Logging in with appdaemon..."
                         )
+
+                        await self.login()
+
+                        # todo: handle errors...
+                        return
+
+                        # raise exceptions.ConfigEntryAuthFailed(
+                        #     "Could not authenticate against Xolta. Refresh token expired."
+                        # )
 
                 login_response.raise_for_status()
 
@@ -75,19 +128,14 @@ class XoltaApi:
                 jsonResponse = await login_response.json()
                 # _LOGGER.debug("Login JSON response %s", jsonResponse)
                 # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
-                self._access_token = jsonResponse["access_token"]
-                self._refresh_token = jsonResponse["refresh_token"]
+                self._prefs[STORAGE_ACCESS_TOKEN] = jsonResponse["access_token"]
+                self._prefs[STORAGE_REFRESH_TOKEN] = jsonResponse["refresh_token"]
 
-                if self._config_entry is not None:
-                    self._hass.config_entries.async_update_entry(
-                        self._config_entry,
-                        data={
-                            **self._config_entry.data,
-                            CONF_REFRESH_TOKEN: self._refresh_token,
-                        },
-                    )
+                await self._store.async_save(self._prefs)
 
-                _LOGGER.debug("Xolta - API Token received: %s", self._access_token)
+                _LOGGER.debug(
+                    "Xolta - API Token received: %s", self._prefs[STORAGE_ACCESS_TOKEN]
+                )
 
         except Exception as exception:
             _LOGGER.error("Unable to fetch login token from Xolta API. %s", exception)
@@ -95,6 +143,9 @@ class XoltaApi:
 
     async def getData(self, renewToken=False, maxTokenRetries=2):
         """Get the latest data from the Xolta API and updates the state."""
+        if self._prefs is None:
+            await self.async_load_preferences()
+
         try:
             while True:
                 if maxTokenRetries <= 0:
@@ -103,10 +154,10 @@ class XoltaApi:
                     )
                     raise OutOfRetries
 
-                if self._access_token is None or renewToken:
+                if self._prefs[STORAGE_ACCESS_TOKEN] is None or renewToken:
                     _LOGGER.debug(
                         "API token not set (%s) or new token requested (%s), fetching",
-                        self._access_token,
+                        self._prefs[STORAGE_ACCESS_TOKEN],
                         renewToken,
                     )
                     await self.renewTokens()
@@ -114,7 +165,7 @@ class XoltaApi:
                 headers = {
                     "Accept": "application/json",
                     "Cache-Control": "no-cache",
-                    "Authorization": "Bearer " + self._access_token,
+                    "Authorization": "Bearer " + self._prefs[STORAGE_ACCESS_TOKEN],
                 }
 
                 async with await self._webclient.get(
@@ -131,7 +182,7 @@ class XoltaApi:
                             maxTokenRetries,
                         )
                         maxTokenRetries -= 1
-                        renewToken = true
+                        renewToken = True
                         continue
 
                     response.raise_for_status()
@@ -170,7 +221,7 @@ class XoltaApi:
                                 maxTokenRetries,
                             )
                             maxTokenRetries -= 1
-                            renewToken = true
+                            renewToken = True
                             continue
 
                         response.raise_for_status()
@@ -223,6 +274,30 @@ class XoltaApi:
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from Xolta api. %s", exception)
             raise
+
+    async def async_load_preferences(self):
+        """Load preferences with stored tokens."""
+        self._prefs = await self._store.async_load()
+
+        if self._prefs is None:
+            self._prefs = {
+                STORAGE_ACCESS_TOKEN: None,
+                STORAGE_REFRESH_TOKEN: None,
+                # STORAGE_EXPIRE_TIME: None,
+            }
+
+    # async def _async_update_preferences(self, access_token, refresh_token):
+    #     """Update user preferences."""
+    #     if self._prefs is None:
+    #         await self.async_load_preferences()
+
+    #     if access_token is not None:
+    #         self._prefs[STORAGE_ACCESS_TOKEN] = access_token
+    #     if refresh_token is not None:
+    #         self._prefs[STORAGE_REFRESH_TOKEN] = refresh_token
+    #     #if expire_time is not None:
+    #     #    self._prefs[STORAGE_EXPIRE_TIME] = expire_time
+    #     await self._store.async_save(self._prefs)
 
 
 class OutOfRetries(exceptions.HomeAssistantError):

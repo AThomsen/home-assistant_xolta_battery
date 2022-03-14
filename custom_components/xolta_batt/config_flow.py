@@ -4,13 +4,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 import voluptuous as vol
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.config_entries import ConfigFlow, CONN_CLASS_CLOUD_POLL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import aiohttp_client
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
-from .const import DOMAIN, XOLTA_CONFIG_SCHEMA, CONF_SITE_ID, CONF_REFRESH_TOKEN
+from .const import DOMAIN, XOLTA_CONFIG_SCHEMA, CONF_SITE_ID
 from .xolta_api import XoltaApi
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,7 +26,8 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
     def __init__(self):
         """Initialize config flow."""
         self._site_id = None
-        self._refresh_token = None
+        self._username = None
+        self._password = None
 
     async def _show_setup_form(self, errors=None):
         """Show the setup form to the user."""
@@ -40,7 +42,8 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reauth",
             description_placeholders={"site_id": f"{self._site_id}"},
-            data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
+            # data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
+            data_schema=XOLTA_CONFIG_SCHEMA,
             errors=errors or {},
         )
 
@@ -52,8 +55,8 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
             self.hass,
             aiohttp_client.async_create_clientsession(self.hass),
             self._site_id,
-            self._refresh_token,
-            None,
+            self._username,
+            self._password,
         )
 
         try:
@@ -62,9 +65,9 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
                 return None
             errors["base"] = "invalid_auth"
         except ConfigEntryAuthFailed as ex:
-            errors[CONF_REFRESH_TOKEN] = str(ex.args)
+            errors[CONF_PASSWORD] = str(ex.args)
         except Exception as ex:
-            errors[CONF_REFRESH_TOKEN] = str(ex.args)
+            errors[CONF_PASSWORD] = str(ex.args)
         return errors
 
     async def async_step_user(self, user_input=None):
@@ -73,7 +76,8 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
             return await self._show_setup_form(user_input)
 
         self._site_id = user_input[CONF_SITE_ID]
-        self._refresh_token = user_input[CONF_REFRESH_TOKEN]
+        self._username = user_input[CONF_USERNAME]
+        self._password = user_input[CONF_PASSWORD]
 
         await self.async_set_unique_id(f"{self._site_id}")
         self._abort_if_unique_id_configured()
@@ -86,10 +90,12 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(self, user_input):
         """Handle configuration by re-auth."""
 
+        # not sure what's going on here...
         if user_input is not None:
             if user_input.get(CONF_SITE_ID):
                 self._site_id = user_input[CONF_SITE_ID]
-            self._refresh_token = user_input[CONF_REFRESH_TOKEN]
+            self._username = user_input[CONF_USERNAME]
+            self._password = user_input[CONF_PASSWORD]
 
         self.context["title_placeholders"] = {"site_id": f"{self._site_id}"}
 
@@ -102,7 +108,11 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         entry = await self.async_set_unique_id(self.unique_id)
         self.hass.config_entries.async_update_entry(
             entry,
-            data={CONF_SITE_ID: self._site_id, CONF_REFRESH_TOKEN: self._refresh_token},
+            data={
+                CONF_SITE_ID: self._site_id,
+                CONF_USERNAME: self._username,
+                CONF_PASSWORD: self._password,
+            },
         )
         return self.async_abort(reason="reauth_successful")
 
@@ -110,5 +120,9 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         """Handle create entry."""
         return self.async_create_entry(
             title=f"{self._site_id}",
-            data={CONF_SITE_ID: self._site_id, CONF_REFRESH_TOKEN: self._refresh_token},
+            data={
+                CONF_SITE_ID: self._site_id,
+                CONF_USERNAME: self._username,
+                CONF_PASSWORD: self._password,
+            },
         )

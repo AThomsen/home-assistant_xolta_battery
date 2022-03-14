@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import aiohttp_client
 
-from .const import CONF_SITE_ID, DOMAIN, CONF_REFRESH_TOKEN
+from .const import CONF_SITE_ID, DOMAIN
 from .xolta_api import XoltaApi
 
 PLATFORMS = ["sensor"]
@@ -28,11 +29,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         aiohttp_client.async_create_clientsession(hass),
         entry.data[CONF_SITE_ID],
-        entry.data[CONF_REFRESH_TOKEN],
-        entry,
+        entry.data[CONF_USERNAME],
+        entry.data[CONF_PASSWORD],
     )
 
-    await api.renewTokens()
+    # await api.renewTokens()
 
     hass.data[DOMAIN][entry.entry_id] = api
 

@@ -1,0 +1,3 @@
+xolta_batt_auth:
+  module: xolta_batt_auth
+  class: XoltaBattAuthenticator
