@@ -23,8 +23,6 @@ class XoltaBattAuthenticator(hass.Hass):
         start_time = time.perf_counter()
         auth_response = { "corr_id": event_args["corr_id"] }
 
-        print(kwargs)
-        print(event_args)
         try:
             self.log("Xolta: requesting site")
             chrome_options = Options()
@@ -95,4 +93,4 @@ class XoltaBattAuthenticator(hass.Hass):
 
         # Set the JSON back to HA
         self.fire_event("XOLTA_BATT_AUTH_RESPONSE", **auth_response)
-        self.log("Return: " + auth_response)
+        self.log("Return: " + str(auth_response))

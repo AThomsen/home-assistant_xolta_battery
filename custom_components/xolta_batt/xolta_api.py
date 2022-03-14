@@ -13,9 +13,8 @@ from .const import CONF_SITE_ID
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_KEY = "xolta_batt_auth"
+STORAGE_KEY_PREFIX = "xolta_batt_auth_"
 STORAGE_VERSION = 1
-# STORAGE_EXPIRE_TIME = "expire_time"
 STORAGE_ACCESS_TOKEN = "access_token"
 STORAGE_REFRESH_TOKEN = "refresh_token"
 
@@ -43,7 +42,9 @@ class XoltaApi:
         self._password = password
 
         self._prefs = None
-        self._store = hass.helpers.storage.Store(STORAGE_VERSION, STORAGE_KEY)
+        self._store = hass.helpers.storage.Store(
+            STORAGE_VERSION, STORAGE_KEY_PREFIX + site_id
+        )
 
         self._auth_event = asyncio.Event()
         self._auth_corr_id = None
@@ -82,11 +83,14 @@ class XoltaApi:
         await self._auth_event.wait()
 
     async def login(self):
-        # wait for up to 5 min to be sure everything is started up...
-        await asyncio.wait_for(self.wait_for_auth(), 10 * 60)
+        # wait for up to ½ min to be sure everything is started up...
+        await asyncio.wait_for(self.wait_for_auth(), 30)
         self._auth_event.clear()
 
     async def renewTokens(self):
+        if self._prefs is None:
+            await self.async_load_preferences()
+
         """Get an access token for the Xolta API from a refresh token"""
         try:
             if self._prefs[STORAGE_REFRESH_TOKEN] is None:

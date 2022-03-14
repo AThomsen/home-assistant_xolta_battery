@@ -5,6 +5,7 @@ import asyncio
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client
 
 from .const import CONF_SITE_ID, DOMAIN
@@ -33,7 +34,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_PASSWORD],
     )
 
-    # await api.renewTokens()
+    try:
+        await api.renewTokens()
+    except Exception as ex:
+        # this causes ha to try again later...
+        # todo: better exeption handling...
+        raise ConfigEntryNotReady from ex
 
     hass.data[DOMAIN][entry.entry_id] = api
 
