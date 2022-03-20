@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client
 
-from .const import CONF_SITE_ID, DOMAIN
+from .const import DOMAIN
 from .xolta_api import XoltaApi
 
 PLATFORMS = ["sensor"]
@@ -29,17 +29,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api = XoltaApi(
         hass,
         aiohttp_client.async_create_clientsession(hass),
-        entry.data[CONF_SITE_ID],
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
     )
 
-    try:
-        await api.renewTokens()
-    except Exception as ex:
-        # this causes ha to try again later...
-        # todo: better exeption handling...
-        raise ConfigEntryNotReady from ex
+    await api.refresh_tokens()
 
     hass.data[DOMAIN][entry.entry_id] = api
 

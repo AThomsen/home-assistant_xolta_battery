@@ -11,7 +11,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import aiohttp_client
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
-from .const import DOMAIN, XOLTA_CONFIG_SCHEMA, CONF_SITE_ID
+from .const import DOMAIN, XOLTA_CONFIG_SCHEMA
 from .xolta_api import XoltaApi
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,7 +25,6 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
 
     def __init__(self):
         """Initialize config flow."""
-        self._site_id = None
         self._username = None
         self._password = None
 
@@ -41,8 +40,6 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         """Show the reauth form to the user."""
         return self.async_show_form(
             step_id="reauth",
-            description_placeholders={"site_id": f"{self._site_id}"},
-            # data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
             data_schema=XOLTA_CONFIG_SCHEMA,
             errors=errors or {},
         )
@@ -54,7 +51,6 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         api = XoltaApi(
             self.hass,
             aiohttp_client.async_create_clientsession(self.hass),
-            self._site_id,
             self._username,
             self._password,
         )
@@ -75,11 +71,10 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return await self._show_setup_form(user_input)
 
-        self._site_id = user_input[CONF_SITE_ID]
         self._username = user_input[CONF_USERNAME]
         self._password = user_input[CONF_PASSWORD]
 
-        await self.async_set_unique_id(f"{self._site_id}")
+        await self.async_set_unique_id(f"{self._username}")
         self._abort_if_unique_id_configured()
 
         errors = await self._check_setup()
@@ -92,14 +87,12 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
 
         # not sure what's going on here...
         if user_input is not None:
-            if user_input.get(CONF_SITE_ID):
-                self._site_id = user_input[CONF_SITE_ID]
             self._username = user_input[CONF_USERNAME]
             self._password = user_input[CONF_PASSWORD]
 
-        self.context["title_placeholders"] = {"site_id": f"{self._site_id}"}
+        # self.context["title_placeholders"] = {"site_id": f"{self._site_id}"}
 
-        await self.async_set_unique_id(f"{self._site_id}")
+        await self.async_set_unique_id(f"{self._username}")
 
         errors = await self._check_setup()
         if errors is not None:
@@ -109,7 +102,6 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
         self.hass.config_entries.async_update_entry(
             entry,
             data={
-                CONF_SITE_ID: self._site_id,
                 CONF_USERNAME: self._username,
                 CONF_PASSWORD: self._password,
             },
@@ -119,9 +111,8 @@ class XoltaBatteryFlowHandler(ConfigFlow, domain=DOMAIN):
     def _async_create_entry(self):
         """Handle create entry."""
         return self.async_create_entry(
-            title=f"{self._site_id}",
+            title=f"{self._username}",
             data={
-                CONF_SITE_ID: self._site_id,
                 CONF_USERNAME: self._username,
                 CONF_PASSWORD: self._password,
             },

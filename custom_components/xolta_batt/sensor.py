@@ -1,4 +1,3 @@
-import site
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.components.binary_sensor import DEVICE_CLASS_BATTERY_CHARGING
 from homeassistant.core import HomeAssistant
@@ -20,7 +19,7 @@ from homeassistant.const import (
     ENERGY_KILO_WATT_HOUR,
 )
 from homeassistant.helpers.entity import Entity
-from .const import DOMAIN, CONF_SITE_ID, UPDATE_INTERVAL_SEC
+from .const import DOMAIN, UPDATE_INTERVAL_SEC
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Add sensors for passed config_entry in HA."""
     xoltaApi = hass.data[DOMAIN][config_entry.entry_id]
-    siteId = config_entry.data[CONF_SITE_ID]
 
     # _LOGGER.debug("config_entry %s", config_entry.data)
     update_interval = timedelta(seconds=UPDATE_INTERVAL_SEC)
@@ -74,89 +72,91 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     #
     await coordinator.async_config_entry_first_refresh()
 
-    async_add_entities(
-        [
-            XoltaSensor(
-                coordinator,
-                siteId,
-                "Battery power flow",
-                SensorDeviceClass.POWER,
-                POWER_KILO_WATT,
-                # negative means charging, positive means discharging
-                "inverterActivePowerAggAvg",
-            ),
-            XoltaSensor(
-                coordinator,
-                siteId,
-                "PV power",
-                SensorDeviceClass.POWER,
-                POWER_KILO_WATT,
-                "meterPvActivePowerAggAvg",
-            ),
-            XoltaSensor(
-                coordinator,
-                siteId,
-                "Power consumption",
-                SensorDeviceClass.POWER,
-                POWER_KILO_WATT,
-                "consumption",
-            ),
-            XoltaSensor(
-                coordinator,
-                siteId,
-                "Battery charge level",
-                SensorDeviceClass.BATTERY,
-                PERCENTAGE,
-                "bmsSocRawArrayCloudTrimmedAggAvg",
-            ),
-            XoltaSensor(
-                coordinator,
-                siteId,
-                "Grid power flow",
-                SensorDeviceClass.POWER,
-                POWER_KILO_WATT,
-                # negative means sell, positive means buy
-                "meterGridActivePowerAggAvg",
-            ),
-            # Energy sensors:
-            XoltaEnergySensor(
-                coordinator,
-                siteId,
-                "Grid energy imported",
-                "grid_imported",
-            ),
-            XoltaEnergySensor(
-                coordinator,
-                siteId,
-                "Grid energy exported",
-                "grid_exported",
-            ),
-            XoltaEnergySensor(
-                coordinator,
-                siteId,
-                "Battery energy charged",
-                "battery_charged",
-            ),
-            XoltaEnergySensor(
-                coordinator,
-                siteId,
-                "Battery energy discharged",
-                "battery_discharged",
-            ),
-            XoltaEnergySensor(
-                coordinator,
-                siteId,
-                "PV energy",
-                "pv",
-            ),
-            XoltaEnergySensor(
-                coordinator,
-                siteId,
-                "Energy consumption",
-                "consumption",
-            ),
-        ]
-    )
+    for site in coordinator.data["sites"]:
+        siteId = site["siteId"]
+        async_add_entities(
+            [
+                XoltaSensor(
+                    coordinator,
+                    siteId,
+                    "Battery power flow",
+                    SensorDeviceClass.POWER,
+                    POWER_KILO_WATT,
+                    # negative means charging, positive means discharging
+                    "inverterActivePowerAggAvg",
+                ),
+                XoltaSensor(
+                    coordinator,
+                    siteId,
+                    "PV power",
+                    SensorDeviceClass.POWER,
+                    POWER_KILO_WATT,
+                    "meterPvActivePowerAggAvg",
+                ),
+                XoltaSensor(
+                    coordinator,
+                    siteId,
+                    "Power consumption",
+                    SensorDeviceClass.POWER,
+                    POWER_KILO_WATT,
+                    "consumption",
+                ),
+                XoltaSensor(
+                    coordinator,
+                    siteId,
+                    "Battery charge level",
+                    SensorDeviceClass.BATTERY,
+                    PERCENTAGE,
+                    "bmsSocRawArrayCloudTrimmedAggAvg",
+                ),
+                XoltaSensor(
+                    coordinator,
+                    siteId,
+                    "Grid power flow",
+                    SensorDeviceClass.POWER,
+                    POWER_KILO_WATT,
+                    # negative means sell, positive means buy
+                    "meterGridActivePowerAggAvg",
+                ),
+                # Energy sensors:
+                XoltaEnergySensor(
+                    coordinator,
+                    siteId,
+                    "Grid energy imported",
+                    "grid_imported",
+                ),
+                XoltaEnergySensor(
+                    coordinator,
+                    siteId,
+                    "Grid energy exported",
+                    "grid_exported",
+                ),
+                XoltaEnergySensor(
+                    coordinator,
+                    siteId,
+                    "Battery energy charged",
+                    "battery_charged",
+                ),
+                XoltaEnergySensor(
+                    coordinator,
+                    siteId,
+                    "Battery energy discharged",
+                    "battery_discharged",
+                ),
+                XoltaEnergySensor(
+                    coordinator,
+                    siteId,
+                    "PV energy",
+                    "pv",
+                ),
+                XoltaEnergySensor(
+                    coordinator,
+                    siteId,
+                    "Energy consumption",
+                    "consumption",
+                ),
+            ]
+        )
 
 
 class XoltaBaseSensor(CoordinatorEntity, SensorEntity):
@@ -265,14 +265,14 @@ class XoltaSensor(XoltaBaseSensor):
 
     @property
     def state(self):
-        data = self.coordinator.data["sensors"]
+        data = self.coordinator.data["sensors"][self._site_id]
         return data[self._data_property] if data["state"] == "Running" else 0
 
     # For backwards compatibility
     @property
     def extra_state_attributes(self):
         """Return the state attributes of the monitored installation."""
-        data = self.coordinator.data["sensors"]
+        data = self.coordinator.data["sensors"][self._site_id]
         attributes = {}
         attributes["statusText"] = data["state"]
         return attributes
@@ -295,10 +295,10 @@ class XoltaEnergySensor(XoltaBaseSensor):
 
     @property
     def native_value(self) -> float:
-        data = self.coordinator.data["energy"]
+        data = self.coordinator.data["energy"][self._site_id]
         return data[self._data_property]
 
     @property
     def last_reset(self):
         """Return the time when the sensor was last reset."""
-        return self.coordinator.data["energy"]["last_reset"]
+        return self.coordinator.data["energy"][self._site_id]["last_reset"]

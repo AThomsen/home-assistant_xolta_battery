@@ -1,15 +1,13 @@
 import asyncio
 from datetime import timedelta, timezone, datetime as dt
+import hashlib
 import ciso8601
 import json
 import logging
 import aiohttp
-import uuid
 from homeassistant.config_entries import ConfigEntry
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.config_validation import datetime
-from .const import CONF_SITE_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,7 +16,7 @@ STORAGE_VERSION = 1
 STORAGE_ACCESS_TOKEN = "access_token"
 STORAGE_REFRESH_TOKEN = "refresh_token"
 
-_LoginUrl = "http://.."
+_LoginUrl = "http://local_xolta-batt-auth-addon:8000/login"
 _TokenURL = "https://xolta.b2clogin.com/145c2c43-a8da-46ab-b5da-1d4de444ed82/b2c_1_sisu/oauth2/v2.0/token"
 _ApiBaseURL = "https://xoltarmcluster2.northeurope.cloudapp.azure.com:19081/Xolta.Rm.Base.App/Xolta.Rm.Base.Api/api/"
 _RequestTimeout = aiohttp.ClientTimeout(total=20)  # seconds
@@ -31,24 +29,23 @@ class XoltaApi:
         self,
         hass: HomeAssistant,
         webclient: aiohttp.ClientSession,
-        site_id,
         username,
         password,
     ):
         self._hass = hass
         self._webclient = webclient
-        self._site_id = site_id
 
         self._username = username
         self._password = password
 
         self._prefs = None
         self._store = hass.helpers.storage.Store(
-            STORAGE_VERSION, STORAGE_KEY_PREFIX + site_id
+            STORAGE_VERSION,
+            STORAGE_KEY_PREFIX + hashlib.md5(username.encode()).hexdigest(),
         )
 
         self._telemetry_data_ts = None
-        self._data = {}
+        self._data = {"sites": None, "sensors": {}, "energy": {}}
 
     async def login(self):
         """Call Xolta Battery authenticator add-on to exchange username+password for access token"""
@@ -59,7 +56,7 @@ class XoltaApi:
             login_data = {"username": self._username, "password": self._password}
 
             async with self._webclient.post(
-                _LoginUrl, data=login_data
+                _LoginUrl, json=login_data
             ) as login_response:
 
                 login_response.raise_for_status()
@@ -67,13 +64,13 @@ class XoltaApi:
                 # Process response as JSON
                 json_response = await login_response.json()
 
-                if json_response["status"].status == "200":
+                if json_response["status"] == "200":
                     self._prefs[STORAGE_ACCESS_TOKEN] = json_response["access_token"]
                     self._prefs[STORAGE_REFRESH_TOKEN] = json_response["refresh_token"]
                     await self._store.async_save(self._prefs)
                     return True
 
-                if json_response["status"].status == "400":
+                if json_response["status"] == "400":
                     # 400 is returned with unknown username / invalid password
                     raise exceptions.ConfigEntryAuthFailed(
                         f"Status { json_response['status'] }: { json_response['message'] }"
@@ -174,85 +171,108 @@ class XoltaApi:
                         "Authorization": "Bearer " + self._prefs[STORAGE_ACCESS_TOKEN],
                     }
 
-                    async with await self._webclient.get(
-                        _ApiBaseURL + "siteStatus",
-                        headers=headers,
-                        params={"siteId": self._site_id},
-                        timeout=_RequestTimeout,
-                    ) as response:
+                    if self._data["sites"] is None:
 
-                        response.raise_for_status()
-                        json_response = await response.json()
-                        self._data["sensors"] = json_response["data"][0]
-
-                    now = dt.now(timezone.utc)
-
-                    if (
-                        self._telemetry_data_ts is None
-                        or ((now - self._telemetry_data_ts).total_seconds() / 60) >= 10
-                    ):
-                        resolution_min = 10
-                        resolution_hour = resolution_min / 60
-
-                        # TODO: hvordan ser dette ud hvis den kaldes lige efter midnat?
-                        params = {
-                            "siteId": self._site_id,
-                            "CalculateConsumptionNeeded": "true",
-                            "fromDateTime": f"{now.date().isoformat()}Z",
-                            "toDateTime": f"{now.isoformat()[:-3]}Z",
-                            "resolutionMin": resolution_min,
-                        }
+                        # Read sites. These probably never changes, so only read them once.
                         async with await self._webclient.get(
-                            _ApiBaseURL + "GetDataSummary",
+                            _ApiBaseURL + "SiteGroup",
                             headers=headers,
-                            params=params,
                             timeout=_RequestTimeout,
                         ) as response:
 
                             response.raise_for_status()
-
                             json_response = await response.json()
-                            telemetry_data = json_response["telemetry"]
+                            self._data["sites"] = json_response["sites"]
 
-                            energy_data = {
-                                "pv": sum(
-                                    t["meterPvActivePowerAggAvgSiteSingle"]
-                                    for t in telemetry_data
-                                )
-                                * resolution_hour,
-                                "consumption": sum(
-                                    t["calculatedConsumption"] for t in telemetry_data
-                                )
-                                * resolution_hour,
-                                "battery_charged": sum(
-                                    min(0, t["inverterActivePowerAggAvgSiteSum"])
-                                    for t in telemetry_data
-                                )
-                                * -resolution_hour,
-                                "battery_discharged": sum(
-                                    max(0, t["inverterActivePowerAggAvgSiteSum"])
-                                    for t in telemetry_data
-                                )
-                                * resolution_hour,
-                                "grid_exported": sum(
-                                    min(0, t["meterGridActivePowerAggAvgSiteSingle"])
-                                    for t in telemetry_data
-                                )
-                                * -resolution_hour,
-                                "grid_imported": sum(
-                                    max(0, t["meterGridActivePowerAggAvgSiteSingle"])
-                                    for t in telemetry_data
-                                )
-                                * resolution_hour,
-                                "last_reset": now.date(),
-                                "dt": telemetry_data
-                                and ciso8601.parse_datetime(
-                                    telemetry_data[-1]["utcEndTime"]
-                                )
-                                or None,
+                    for site in self._data["sites"]:
+
+                        site_id = site["siteId"]
+
+                        async with await self._webclient.get(
+                            _ApiBaseURL + "siteStatus",
+                            headers=headers,
+                            params={"siteId": site_id},
+                            timeout=_RequestTimeout,
+                        ) as response:
+
+                            response.raise_for_status()
+                            json_response = await response.json()
+                            self._data["sensors"][site_id] = json_response["data"][0]
+
+                        now = dt.now(timezone.utc)
+
+                        if (
+                            self._telemetry_data_ts is None
+                            or ((now - self._telemetry_data_ts).total_seconds() / 60)
+                            >= 10
+                        ):
+                            resolution_min = 10
+                            resolution_hour = resolution_min / 60
+
+                            # TODO: hvordan ser dette ud hvis den kaldes lige efter midnat?
+                            params = {
+                                "siteId": site_id,
+                                "CalculateConsumptionNeeded": "true",
+                                "fromDateTime": f"{now.date().isoformat()}Z",
+                                "toDateTime": f"{now.isoformat()[:-3]}Z",
+                                "resolutionMin": resolution_min,
                             }
-                            self._telemetry_data_ts = energy_data["dt"] or now
-                            self._data["energy"] = energy_data
+                            async with await self._webclient.get(
+                                _ApiBaseURL + "GetDataSummary",
+                                headers=headers,
+                                params=params,
+                                timeout=_RequestTimeout,
+                            ) as response:
+
+                                response.raise_for_status()
+
+                                json_response = await response.json()
+                                telemetry_data = json_response["telemetry"]
+
+                                energy_data = {
+                                    "pv": sum(
+                                        t["meterPvActivePowerAggAvgSiteSingle"]
+                                        for t in telemetry_data
+                                    )
+                                    * resolution_hour,
+                                    "consumption": sum(
+                                        t["calculatedConsumption"]
+                                        for t in telemetry_data
+                                    )
+                                    * resolution_hour,
+                                    "battery_charged": sum(
+                                        min(0, t["inverterActivePowerAggAvgSiteSum"])
+                                        for t in telemetry_data
+                                    )
+                                    * -resolution_hour,
+                                    "battery_discharged": sum(
+                                        max(0, t["inverterActivePowerAggAvgSiteSum"])
+                                        for t in telemetry_data
+                                    )
+                                    * resolution_hour,
+                                    "grid_exported": sum(
+                                        min(
+                                            0, t["meterGridActivePowerAggAvgSiteSingle"]
+                                        )
+                                        for t in telemetry_data
+                                    )
+                                    * -resolution_hour,
+                                    "grid_imported": sum(
+                                        max(
+                                            0, t["meterGridActivePowerAggAvgSiteSingle"]
+                                        )
+                                        for t in telemetry_data
+                                    )
+                                    * resolution_hour,
+                                    "last_reset": now.date(),
+                                    "dt": telemetry_data
+                                    and ciso8601.parse_datetime(
+                                        telemetry_data[-1]["utcEndTime"]
+                                    )
+                                    or None,
+                                }
+                                self._telemetry_data_ts = energy_data["dt"] or now
+                                self._data["energy"][site_id] = energy_data
 
                     return self._data
 
