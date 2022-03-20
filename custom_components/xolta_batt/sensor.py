@@ -43,7 +43,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
             # async with async_timeout.timeout(10):
-            result = await xoltaApi.getData()
+            result = await xoltaApi.get_data()
             return result
 
         except ConfigEntryAuthFailed as err:
