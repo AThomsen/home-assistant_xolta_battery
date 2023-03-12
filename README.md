@@ -1,9 +1,11 @@
 # Xolta Solar Battery for Home Assistant
 
-Unofficial and crude integration for Xolta Solar battery.
+Unofficial integration for Xolta Solar battery.
 
 Uses the existing api of the web app as it seems no public api is available.
 
 ## Installation
 
-Install using HACS. In a browser, log in to the offical Xolta app and snatch `site id` and `refresh token` using the browsers *Developer tool* (F12).
+The integration requires a [helper-add-on](https://github.com/AThomsen/home-assistant_xolta_battery_authentication-addon) that takes care of getting an API access token from a username and password. Install this first. Make sure to enable *Start at boot*.
+
+Then Install integration using HACS: HACS -> Integrations -> (kebab menu) -> Custom repositories -> Repsitory `https://github.com/AThomsen/home-assistant_xolta_battery` Category: Integration.
