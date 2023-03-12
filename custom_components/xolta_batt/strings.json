@@ -1,11 +1,12 @@
 {
-    "title": "Xolta PV API",
+    "title": "Xolta Battery",
     "config": {
       "step": {
         "user": {
+          "description": "Set up your Xolta battery instance to allow monitoring of battery and power flows.",
           "data": {
-            "site_id": "[%key:common::config_flow::data::site_id%]",
-            "refresh_token": "[%key:common::config_flow::data::refresh_token%]"
+            "password": "[%key:common::config_flow::data::password%]",
+            "username": "[%key:common::config_flow::data::username%]"
           }
         }
       },
