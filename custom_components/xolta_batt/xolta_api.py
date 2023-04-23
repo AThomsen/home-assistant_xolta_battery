@@ -16,7 +16,7 @@ STORAGE_VERSION = 1
 STORAGE_ACCESS_TOKEN = "access_token"
 STORAGE_REFRESH_TOKEN = "refresh_token"
 
-_LoginUrl = "http://b762c32e-xolta-batt-auth-addon:8000/login"
+_LoginUrl = "http://70f0fc4b-xolta-batt-auth-addon:8000/login"
 _TokenURL = "https://xolta.b2clogin.com/145c2c43-a8da-46ab-b5da-1d4de444ed82/b2c_1_sisu/oauth2/v2.0/token"
 _ApiBaseURL = "https://xoltarmcluster2.northeurope.cloudapp.azure.com:19081/Xolta.Rm.Base.App/Xolta.Rm.Base.Api/api/"
 _RequestTimeout = aiohttp.ClientTimeout(total=20)  # seconds
