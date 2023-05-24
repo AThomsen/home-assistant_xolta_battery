@@ -214,7 +214,7 @@ class XoltaApi:
                                 "siteId": site_id,
                                 "CalculateConsumptionNeeded": "true",
                                 "fromDateTime": f"{now.date().isoformat()}Z",
-                                "toDateTime": f"{now.isoformat()[:-3]}Z",
+                                "toDateTime": f"{now.replace(tzinfo=None).isoformat()}Z",
                                 "resolutionMin": resolution_min,
                             }
                             async with await self._webclient.get(
