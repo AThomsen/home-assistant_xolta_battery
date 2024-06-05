@@ -269,7 +269,6 @@ class XoltaApi:
                                         for t in telemetry_data
                                     )
                                     * resolution_hour,
-                                    "last_reset": now_utc.date(),
                                     "dt": telemetry_data
                                     and ciso8601.parse_datetime(
                                         telemetry_data[-1]["utcEndTime"]

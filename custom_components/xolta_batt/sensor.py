@@ -281,8 +281,9 @@ class XoltaSensor(XoltaBaseSensor):
 class XoltaEnergySensor(XoltaBaseSensor):
 
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = SensorStateClass.TOTAL
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
+    _attr_suggested_display_precision = 1
 
     def __init__(self, coordinator, site_id, sensor_type, data_property):
         super().__init__(coordinator, site_id, sensor_type)
@@ -297,8 +298,3 @@ class XoltaEnergySensor(XoltaBaseSensor):
     def native_value(self) -> float:
         data = self.coordinator.data["energy"][self._site_id]
         return data[self._data_property]
-
-    @property
-    def last_reset(self):
-        """Return the time when the sensor was last reset."""
-        return self.coordinator.data["energy"][self._site_id]["last_reset"]
