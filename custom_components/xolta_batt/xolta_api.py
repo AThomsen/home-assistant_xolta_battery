@@ -8,6 +8,7 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -198,23 +199,27 @@ class XoltaApi:
                             response.raise_for_status()
                             json_response = await response.json()
                             self._data["sensors"][site_id] = json_response["data"][0]
+                        
 
-                        now = dt.now(timezone.utc)
+                        # Only refresh energy data every 10 minutes
+                        now_utc = dt_util.utcnow()
 
                         if (
-                            self._telemetry_data_ts is None
-                            or ((now - self._telemetry_data_ts).total_seconds() / 60)
-                            >= 10
+                            self._telemetry_data_ts is None or 
+                            ((now_utc - self._telemetry_data_ts).total_seconds() / 60) >= 10
                         ):
                             resolution_min = 10
                             resolution_hour = resolution_min / 60
 
-                            # TODO: hvordan ser dette ud hvis den kaldes lige efter midnat?
+                            # Query data from midnight (local tz) to now, but query in UTC
+                            now_local = dt_util.as_local(now_utc)
+                            start_of_local_day_utc = dt_util.as_utc(dt_util.start_of_local_day(now_local))
+
                             params = {
                                 "siteId": site_id,
                                 "CalculateConsumptionNeeded": "true",
-                                "fromDateTime": f"{now.date().isoformat()}Z",
-                                "toDateTime": f"{now.replace(tzinfo=None).isoformat()}Z",
+                                "fromDateTime": f"{start_of_local_day_utc.replace(tzinfo=None).isoformat()}Z",
+                                "toDateTime": f"{now_utc.replace(tzinfo=None, microsecond=0).isoformat()}Z",
                                 "resolutionMin": resolution_min,
                             }
                             async with await self._webclient.get(
@@ -264,14 +269,14 @@ class XoltaApi:
                                         for t in telemetry_data
                                     )
                                     * resolution_hour,
-                                    "last_reset": now.date(),
+                                    "last_reset": now_utc.date(),
                                     "dt": telemetry_data
                                     and ciso8601.parse_datetime(
                                         telemetry_data[-1]["utcEndTime"]
                                     )
                                     or None,
                                 }
-                                self._telemetry_data_ts = energy_data["dt"] or now
+                                self._telemetry_data_ts = energy_data["dt"] or now_utc
                                 self._data["energy"][site_id] = energy_data
 
                     return self._data
