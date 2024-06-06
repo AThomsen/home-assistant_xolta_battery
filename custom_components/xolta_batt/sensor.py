@@ -77,6 +77,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "Battery power flow",
                     SensorDeviceClass.POWER,
                     UnitOfPower.KILO_WATT,
+                    "mdi:battery-charging-100",
                     # negative means charging, positive means discharging
                     "inverterActivePowerAggAvg",
                 ),
@@ -86,6 +87,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "PV power",
                     SensorDeviceClass.POWER,
                     UnitOfPower.KILO_WATT,
+                    "mdi:solar-power",
                     "meterPvActivePowerAggAvg",
                 ),
                 XoltaSensor(
@@ -94,6 +96,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "Power consumption",
                     SensorDeviceClass.POWER,
                     UnitOfPower.KILO_WATT,
+                    "mdi:home-lightning-bolt",
                     "consumption",
                 ),
                 XoltaSensor(
@@ -102,6 +105,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "Battery charge level",
                     SensorDeviceClass.BATTERY,
                     PERCENTAGE,
+                    None,
                     "bmsSocRawArrayCloudTrimmedAggAvg",
                 ),
                 XoltaSensor(
@@ -110,6 +114,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "Grid power flow",
                     SensorDeviceClass.POWER,
                     UnitOfPower.KILO_WATT,
+                    "mdi:transmission-tower",
                     # negative means sell, positive means buy
                     "meterGridActivePowerAggAvg",
                 ),
@@ -118,36 +123,42 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     coordinator,
                     siteId,
                     "Grid energy imported",
+                    "mdi:transmission-tower-export", # yes, this is correct
                     "grid_imported",
                 ),
                 XoltaEnergySensor(
                     coordinator,
                     siteId,
                     "Grid energy exported",
+                    "mdi:transmission-tower-import", # yes, this is correct
                     "grid_exported",
                 ),
                 XoltaEnergySensor(
                     coordinator,
                     siteId,
                     "Battery energy charged",
+                    "mdi:battery-arrow-up",
                     "battery_charged",
                 ),
                 XoltaEnergySensor(
                     coordinator,
                     siteId,
                     "Battery energy discharged",
+                    "mdi:battery-arrow-down",
                     "battery_discharged",
                 ),
                 XoltaEnergySensor(
                     coordinator,
                     siteId,
                     "PV energy",
+                    "mdi:solar-power",
                     "pv",
                 ),
                 XoltaEnergySensor(
                     coordinator,
                     siteId,
                     "Energy consumption",
+                    "mdi:home-lightning-bolt",
                     "consumption",
                 ),
             ]
@@ -156,45 +167,17 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
 class XoltaBaseSensor(CoordinatorEntity, SensorEntity):
     def __init__(
-        self, coordinator, site_id, sensor_type  # , device_class, units, data_property
+        self, coordinator, site_id, sensor_type, icon
     ):
         super().__init__(coordinator)
         self.coordinator = coordinator
         self._site_id = site_id
         self._sensor_type = sensor_type
-        # self._units = units
-        # self._data_property = data_property
-
-    # @property
-    # def unit_of_measurement(self):
-    #     return self._units
+        self._attr_icon = icon
 
     @property
     def name(self) -> str:
         return f"{self._sensor_type}"
-
-    # @property
-    # def unique_id(self) -> str:
-    #     return f"{self._site_id}-energy-{self._sensor_type}"
-
-    # def statusText(self, status) -> str:
-    #     data = self.coordinator.data["sensors"]
-    #     return data["state"]
-
-    # # For backwards compatibility
-    # @property
-    # def extra_state_attributes(self):
-    #     """Return the state attributes of the monitored installation."""
-    #     data = self.coordinator.data["sensors"]
-    #     # _LOGGER.debug("state, self data: %s", data.items())
-    #     # attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-    #     attributes = {}
-    #     attributes["statusText"] = data["state"]
-    #     return attributes
-
-    # @property
-    # def is_on(self) -> bool:
-    #     self.coordinator.data["site_data"]["state"] == "Running"
 
     @property
     def should_poll(self) -> bool:
@@ -236,9 +219,9 @@ class XoltaBaseSensor(CoordinatorEntity, SensorEntity):
 
 class XoltaSensor(XoltaBaseSensor):
     def __init__(
-        self, coordinator, site_id, sensor_type, device_class, units, data_property
+        self, coordinator, site_id, sensor_type, device_class, units, icon, data_property
     ):
-        super().__init__(coordinator, site_id, sensor_type)
+        super().__init__(coordinator, site_id, sensor_type, icon)
         self.coordinator = coordinator
         self.entity_id = f"sensor.{self._site_id}_{self._sensor_type}"
         self._attr_device_class = device_class
@@ -272,8 +255,8 @@ class XoltaEnergySensor(XoltaBaseSensor):
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 1
 
-    def __init__(self, coordinator, site_id, sensor_type, data_property):
-        super().__init__(coordinator, site_id, sensor_type)
+    def __init__(self, coordinator, site_id, sensor_type, icon, data_property):
+        super().__init__(coordinator, site_id, sensor_type, icon)
         self.entity_id = f"sensor.{self._site_id}_energy_{self._sensor_type}"
         self._data_property = data_property
 
