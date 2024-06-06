@@ -14,7 +14,7 @@ Then Install integration using HACS: HACS -> Integrations -> (kebab menu) -> Cus
 
 ## Example usage
 
-### Power flow card
+### Power flow card plus
 
 Example of using the integration with the [power-flow-card-plus](https://github.com/flixlix/power-flow-card-plus).
 
