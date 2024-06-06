@@ -1,8 +1,5 @@
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
-from homeassistant.components.binary_sensor import DEVICE_CLASS_BATTERY_CHARGING
-from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-import homeassistant
 import logging
 
 from datetime import timedelta
@@ -13,12 +10,10 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.const import (
-    PERCENTAGE,
-    POWER_KILO_WATT,
-    ENERGY_KILO_WATT_HOUR,
+    PERCENTAGE
 )
-from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, UPDATE_INTERVAL_SEC
 
 _LOGGER = logging.getLogger(__name__)
@@ -81,7 +76,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     siteId,
                     "Battery power flow",
                     SensorDeviceClass.POWER,
-                    POWER_KILO_WATT,
+                    UnitOfPower.KILO_WATT,
                     # negative means charging, positive means discharging
                     "inverterActivePowerAggAvg",
                 ),
@@ -90,7 +85,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     siteId,
                     "PV power",
                     SensorDeviceClass.POWER,
-                    POWER_KILO_WATT,
+                    UnitOfPower.KILO_WATT,
                     "meterPvActivePowerAggAvg",
                 ),
                 XoltaSensor(
@@ -98,7 +93,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     siteId,
                     "Power consumption",
                     SensorDeviceClass.POWER,
-                    POWER_KILO_WATT,
+                    UnitOfPower.KILO_WATT,
                     "consumption",
                 ),
                 XoltaSensor(
@@ -114,7 +109,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     siteId,
                     "Grid power flow",
                     SensorDeviceClass.POWER,
-                    POWER_KILO_WATT,
+                    UnitOfPower.KILO_WATT,
                     # negative means sell, positive means buy
                     "meterGridActivePowerAggAvg",
                 ),
@@ -246,18 +241,10 @@ class XoltaSensor(XoltaBaseSensor):
         super().__init__(coordinator, site_id, sensor_type)
         self.coordinator = coordinator
         self.entity_id = f"sensor.{self._site_id}_{self._sensor_type}"
-        self._device_class = device_class
-        self._units = units
+        self._attr_device_class = device_class
+        self._attr_native_unit_of_measurement = units
         self._data_property = data_property
         _LOGGER.debug("Creating XoltaBatterySensor with id %s", self._site_id)
-
-    @property
-    def device_class(self):
-        return self._device_class
-
-    @property
-    def unit_of_measurement(self):
-        return self._units
 
     @property
     def unique_id(self) -> str:
@@ -282,7 +269,7 @@ class XoltaEnergySensor(XoltaBaseSensor):
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
-    _attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 1
 
     def __init__(self, coordinator, site_id, sensor_type, data_property):
