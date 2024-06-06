@@ -7,6 +7,7 @@
     "config_flow": true,
     "dependencies": [],
     "documentation": "https://github.com/AThomsen/home-assistant_xolta_battery",
+    "issue_tracker": "https://github.com/AThomsen/home-assistant_xolta_battery/issues",
     "iot_class": "cloud_polling",
     "requirements": [],
     "version": "0.2.0-beta.1"
