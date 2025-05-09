@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from homeassistant.helpers.storage import Store
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ class XoltaApi:
         self._password = password
 
         self._prefs = None
-        self._store = hass.helpers.storage.Store(
+        self._store = Store(
+            hass,
             STORAGE_VERSION,
             STORAGE_KEY_PREFIX + hashlib.md5(username.encode()).hexdigest(),
         )
